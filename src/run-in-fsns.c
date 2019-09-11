@@ -432,7 +432,12 @@ dry_touch(const char* target){
 
 static void
 touch(const char* target){
-	close (open (target, O_WRONLY | O_CREAT, 0700));
+    MAY_DRY_RUN(mkdir_p, dirname(strdupa(target)));
+	int fd = open (target, O_WRONLY | O_CREAT, 0700);
+    if(fd < 0){
+        assert_perror(errno);
+    }
+    close(fd);
 }
 
 static void
