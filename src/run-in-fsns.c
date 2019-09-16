@@ -119,29 +119,6 @@ is_same_or_parent_of(const bind_mount_pair* source, const bind_mount_pair* targe
     return is_same_or_parent_of_path(st, tt);
 }
 
-static bool
-one_is_same_or_parent_of_another(bind_mount_pair* source, bind_mount_pair* target){
-    bool result = is_same_or_parent_of(source, target) || is_same_or_parent_of(target, source);
-    if(result){
-        fprintf(stderr, "Trying to bind-mount %s to %s, while %s is mounted to %s.\n"
-                "This kind of nesting bind-mount is currently not supported.\n",
-                target->source, target->target, source->source, source->target);
-    }
-    return result;
-}
-
-static bool
-any_is_same_or_parent_of(bind_mount_pair* source_head, bind_mount_pair* target){
-    for(bind_mount_pair* current = source_head->next;
-            current != NULL;
-            current = current->next){
-        if(one_is_same_or_parent_of_another(current, target)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 /* Write the user/group ID map for PID to FILE, mapping ID to itself.  See
    user_namespaces(7).  */
 static void
@@ -343,25 +320,6 @@ exclude(bind_mount_pair* head, bind_mount_pair* exclude_head){
 }
 
 static void
-merge(bind_mount_pair* head, bind_mount_pair* be_merged_head){
-    bind_mount_pair* iter = head;
-    while(iter->next != NULL){
-        iter = iter->next;
-    }
-
-    bind_mount_pair* merge_iter = be_merged_head->next;
-    while(merge_iter != NULL){
-        if(any_is_same_or_parent_of(head, merge_iter)){
-            exit(1);
-        }
-        iter->next = merge_iter;
-        merge_iter = merge_iter->next;
-        iter = iter->next;
-        iter->next = NULL;
-    }
-}
-
-static void
 sort_by_hierarchy(bind_mount_pair* head){
     bind_mount_pair* iter = head->next;
     head->next = NULL;
@@ -386,33 +344,6 @@ sort_by_hierarchy(bind_mount_pair* head){
         iter = iter->next;
         temp->next = hiter->next;
         hiter->next = temp;
-    }
-}
-
-static void
-merge_nest(bind_mount_pair* head, bind_mount_pair* be_merged_head){
-    sort_by_hierarchy(be_merged_head);
-    bind_mount_pair* miter = be_merged_head->next;
-    while(miter != NULL){
-        bind_mount_pair* iter = head;
-        bool parent_found = false;
-        for(;iter->next != NULL; iter = iter->next){
-            bind_mount_pair* current = iter->next;
-            if(is_same_or_parent_of(miter, current)){
-                fprintf(stderr, "%s is mounted, can't mount %s.\n", current->target, miter->target);
-                exit(1);
-            }
-            if(is_same_or_parent_of(current, miter)){
-                parent_found = true;
-            } else {
-                if(parent_found)break;
-            }
-        }
-
-        bind_mount_pair* temp = miter;
-        miter = miter->next;
-        temp->next = iter->next;
-        iter->next = temp;
     }
 }
 
@@ -495,9 +426,6 @@ main (int argc, char *argv[])
     bind_mount_pair bind_directly_list_head = { "", "", true, NULL };
     bind_mount_pair* bind_directly_list_iter = &bind_directly_list_head;
 
-    bind_mount_pair bind_nest_list_head = { "", "", true, NULL };
-    bind_mount_pair* bind_nest_list_iter = &bind_nest_list_head;
-
     bind_mount_pair bind_top_list_head = { "", "", true, NULL };
     bind_mount_pair* bind_top_list_iter = &bind_top_list_head;
 
@@ -533,7 +461,6 @@ main (int argc, char *argv[])
             working_dir = argv[++index];
         }
         else ARG("--bind", &bind_directly_list_iter, bind_opt)
-        else ARG("--bind-nest", &bind_nest_list_iter, bind_opt)
         else ARG("--bind-top", &bind_top_list_iter, bind_top_opt)
         else ARG("--bind-temp", &bind_directly_list_iter, bind_temp_opt)
         else ARG("--exclude", &exclude_list_iter, exclude_opt)
@@ -561,10 +488,13 @@ main (int argc, char *argv[])
     exclude(&bind_top_list_head, &exclude_list_head);
 
     bind_mount_pair merged_head = { "", "", true, NULL };
-    
-    merge(&merged_head, &bind_directly_list_head);
-    merge(&merged_head, &bind_top_list_head);
-    merge_nest(&merged_head, &bind_nest_list_head);
+    bind_mount_pair* merged_iter = &merged_head;
+    merged_iter->next = bind_directly_list_head.next;
+    while(merged_iter->next != NULL){
+        merged_iter = merged_iter->next;
+    }
+    merged_iter->next = bind_top_list_head.next;
+    sort_by_hierarchy(&merged_head);
 
     char* temp_root = mkdtemp(strdup("/tmp/run-in-fsns-XXXXXX"));
     pid_t child = syscall (SYS_clone, SIGCHLD | CLONE_NEWNS | CLONE_NEWUSER, NULL, NULL, NULL);
