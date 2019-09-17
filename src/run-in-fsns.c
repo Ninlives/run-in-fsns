@@ -26,6 +26,7 @@
                  if(ERRVAR(err,__LINE__) < 0)assert_perror(errno)
 
 bool dry_run = false;
+int pipe_fd[2];
 
 typedef struct _bind_mount_pair {
     char* source;
@@ -497,6 +498,7 @@ main (int argc, char *argv[])
     sort_by_hierarchy(&merged_head);
 
     char* temp_root = mkdtemp(strdup("/tmp/run-in-fsns-XXXXXX"));
+    if(pipe(pipe_fd) < 0)assert_perror(errno);
     pid_t child = syscall (SYS_clone, SIGCHLD | CLONE_NEWNS | CLONE_NEWUSER, NULL, NULL, NULL);
 
     switch (child){
@@ -520,6 +522,7 @@ main (int argc, char *argv[])
 	            write_id_map (child, "gid_map", getgid ());
             }
 
+            close(pipe_fd[1]);
 	        int status;
 	        waitpid (child, &status, 0);
 	        chdir ("/");			  /* avoid EBUSY */
@@ -531,6 +534,20 @@ main (int argc, char *argv[])
     char* default_args[2] = { "/bin/sh", NULL };
     char* command = index >= argc ? default_args[0] : argv[index];
     char** arguments = index >= argc ? default_args : &argv[index];
+    
+    char ch;
+
+    /* Wait until the parent has updated the UID and GID mappings. See
+       the comment in main(). We wait for end of file on a pipe that will
+       be closed by the parent process once it has updated the mappings. */
+
+    close(pipe_fd[1]);    /* Close our descriptor for the write end
+                                   of the pipe so that we see EOF when
+                                   parent closes its descriptor */
+    if (read(pipe_fd[0], &ch, 1) != 0) {
+        fprintf(stderr, "Failure in child: read from pipe returned != 0\n");
+        exit(EXIT_FAILURE);
+    }
 
     ERR(MAY_DRY_RUN(execvp, command, arguments));
     return EXIT_SUCCESS;
