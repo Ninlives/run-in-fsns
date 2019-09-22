@@ -193,7 +193,7 @@ bind_pair(const char* source, const char* target, bool readonly){
             fprintf(stderr, "Error while resolving path %s.\n", source);
             assert_perror(errno);
         }
-        real_source = source;
+        return NULL;
     }
     if(target[0] != '/') {
         fprintf(stderr, "Not an absolute path: %s,\n", target);
@@ -268,7 +268,7 @@ bind_top_opt_internal(char* source_target){
         char *abs_source = concat (source, entry->d_name);
         char *new_entry = concat (target, entry->d_name);
         current->next = bind_pair(abs_source, new_entry, readonly);
-        current = current->next;
+        if(current->next != NULL)current = current->next;
     }
 
     closedir (stream);
