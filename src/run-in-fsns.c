@@ -189,7 +189,7 @@ static bind_mount_pair*
 bind_pair(const char* source, const char* target, bool readonly){
     char* real_source = realpath(source, NULL);
     if(real_source == NULL){
-        if(errno != EINVAL){
+        if(errno != ENOENT){
             fprintf(stderr, "Error while resolving path %s.\n", source);
             assert_perror(errno);
         }
