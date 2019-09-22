@@ -189,8 +189,11 @@ static bind_mount_pair*
 bind_pair(const char* source, const char* target, bool readonly){
     char* real_source = realpath(source, NULL);
     if(real_source == NULL){
-        fprintf(stderr, "Error while resolving path %s.\n", source);
-        assert_perror(errno);
+        if(errno != EINVAL){
+            fprintf(stderr, "Error while resolving path %s.\n", source);
+            assert_perror(errno);
+        }
+        real_source = source;
     }
     if(target[0] != '/') {
         fprintf(stderr, "Not an absolute path: %s,\n", target);
