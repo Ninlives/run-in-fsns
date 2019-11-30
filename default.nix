@@ -1,6 +1,6 @@
 { pkgs ? import <nixpkgs> {} }:
 pkgs.stdenv.mkDerivation {
   name = "run-in-fsns";
-  src = ./src;
+  src = pkgs.lib.cleanSource ./.;
   makeFlags = [ "PREFIX=$(out)" ];
 }
