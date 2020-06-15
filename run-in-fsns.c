@@ -307,6 +307,7 @@ static void
 exclude(bind_mount_pair* head, bind_mount_pair* exclude_head){
     bind_mount_pair* current = head;
     while(current->next != NULL){
+        bool remove_flag = false;
         for(bind_mount_pair* exclude_current = exclude_head;
                 exclude_current->next != NULL;
                 exclude_current = exclude_current->next){
@@ -316,10 +317,11 @@ exclude(bind_mount_pair* head, bind_mount_pair* exclude_head){
                 free(removed->source);
                 free(removed->target);
                 free(removed);
+                remove_flag = true;
                 break;
             }
         }
-        if(current != NULL) current = current->next;
+        if(current != NULL && !remove_flag) current = current->next;
     }
 }
 
